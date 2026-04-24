@@ -32,6 +32,6 @@ coverage/
 # Sentry
 .sentryclirc
 
-.CLAUDE.md
-.PROMPT.md
-.PROMPT2.md
+CLAUDE.md
+PROMPT.md
+PROMPT2.md
