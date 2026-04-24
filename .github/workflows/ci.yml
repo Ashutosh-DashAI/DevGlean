@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: devglean
+          POSTGRES_PASSWORD: devglean
+          POSTGRES_DB: devglean_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Generate Prisma client
+        run: cd packages/db && bunx prisma generate
+
+      - name: Validate Prisma schema
+        run: cd packages/db && bunx prisma validate
+
+      - name: Type check
+        run: |
+          cd packages/shared && bun run typecheck
+          cd ../db && bun run typecheck
+
+      - name: Run tests
+        run: bun test
+        env:
+          DATABASE_URL: postgresql://devglean:devglean@localhost:5432/devglean_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test-jwt-secret-that-is-at-least-32-characters-long
+          JWT_REFRESH_SECRET: test-refresh-secret-that-is-at-least-32-characters
+          ENCRYPTION_KEY: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+          OPENAI_API_KEY: sk-test-fake
+          ANTHROPIC_API_KEY: sk-ant-test-fake
+          NODE_ENV: test

@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.turbo/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma
+packages/db/prisma/*.db
+packages/db/prisma/*.db-journal
+
+# Logs
+*.log
+
+# Test coverage
+coverage/
+
+# Sentry
+.sentryclirc
+
+.CLAUDE.md
+.PROMPT.md
+.PROMPT2.md

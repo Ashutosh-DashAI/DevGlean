@@ -1,0 +1,22 @@
+{
+  "name": "@devglean/db",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "bunx prisma migrate dev",
+    "db:generate": "bunx prisma generate",
+    "db:push": "bunx prisma db push",
+    "db:studio": "bunx prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.2.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.2.0",
+    "typescript": "^5.7.0"
+  }
+}

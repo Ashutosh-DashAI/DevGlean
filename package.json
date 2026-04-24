@@ -1,0 +1,21 @@
+{
+  "name": "devglean",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "db:migrate": "cd packages/db && bunx prisma migrate dev",
+    "db:generate": "cd packages/db && bunx prisma generate",
+    "db:seed": "bun run infra/scripts/seed.ts",
+    "db:studio": "cd packages/db && bunx prisma studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  },
+  "packageManager": "bun@1.1.0"
+}

@@ -1,0 +1,262 @@
+// packages/db/prisma/schema.prisma
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector"), pg_trgm]
+}
+
+// ─── IDENTITY ───────────────────────────────────────────────────────────────
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  name          String
+  avatarUrl     String?
+  role          TeamRole       @default(MEMBER)
+  teamId        String
+  team          Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+  queryLogs     QueryLog[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([teamId])
+  @@index([email])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([family])
+}
+
+// ─── TEAM / MULTI-TENANCY ────────────────────────────────────────────────────
+
+model Team {
+  id                   String        @id @default(cuid())
+  name                 String
+  slug                 String        @unique
+  plan                 Plan          @default(FREE)
+  stripeCustomerId     String?       @unique
+  stripeSubscriptionId String?       @unique
+  githubAppInstallId   String?       @unique
+  members              User[]
+  connectors           Connector[]
+  documents            Document[]
+  queryLogs            QueryLog[]
+  ossQueryLogs         OSSQueryLog[]
+  invites              TeamInvite[]
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  @@index([slug])
+}
+
+model TeamInvite {
+  id         String    @id @default(cuid())
+  email      String
+  role       TeamRole  @default(MEMBER)
+  token      String    @unique
+  teamId     String
+  team       Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([teamId])
+  @@index([token])
+}
+
+// ─── CONNECTORS ──────────────────────────────────────────────────────────────
+
+model Connector {
+  id             String          @id @default(cuid())
+  teamId         String
+  team           Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  type           ConnectorType
+  displayName    String
+  oauthToken     String
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  workspaceId    String?
+  syncCursor     Json?
+  lastSyncedAt   DateTime?
+  lastSyncStatus SyncStatus      @default(PENDING)
+  lastSyncError  String?
+  webhookSecret  String?
+  config         Json?
+  status         ConnectorStatus @default(ACTIVE)
+  documents      Document[]
+  syncJobs       SyncJob[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([teamId, type, workspaceId])
+  @@index([teamId])
+  @@index([status])
+}
+
+model SyncJob {
+  id           String     @id @default(cuid())
+  connectorId  String
+  connector    Connector  @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+  status       SyncStatus @default(RUNNING)
+  docsIndexed  Int        @default(0)
+  docsUpdated  Int        @default(0)
+  docsDeleted  Int        @default(0)
+  errorMessage String?
+  startedAt    DateTime   @default(now())
+  completedAt  DateTime?
+
+  @@index([connectorId])
+  @@index([status])
+}
+
+// ─── DOCUMENTS / VECTOR STORE ─────────────────────────────────────────────────
+
+model Document {
+  id          String                          @id @default(cuid())
+  teamId      String
+  team        Team                            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  connectorId String
+  connector   Connector                       @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+  sourceType  ConnectorType
+  sourceId    String
+  sourceUrl   String
+  title       String
+  content     String
+  embedding   Unsupported("vector(1536)")?
+  chunkIndex  Int
+  chunkTotal  Int
+  metadata    Json
+  aclGroups   String[]
+  contentHash String
+  version     Int                             @default(1)
+  language    String?
+  createdAt   DateTime                        @default(now())
+  updatedAt   DateTime                        @updatedAt
+
+  @@unique([teamId, sourceId, chunkIndex])
+  @@index([teamId])
+  @@index([connectorId])
+  @@index([sourceType])
+  @@index([contentHash])
+}
+
+// ─── ANALYTICS ───────────────────────────────────────────────────────────────
+
+model QueryLog {
+  id             String       @id @default(cuid())
+  teamId         String
+  team           Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  query          String
+  answer         String?
+  surface        QuerySurface @default(PRIVATE)
+  sourceCount    Int          @default(0)
+  ossResultCount Int          @default(0)
+  latencyMs      Int
+  tokensUsed     Int          @default(0)
+  cacheHit       Boolean      @default(false)
+  wasHelpful     Boolean?
+  connectorTypes String[]
+  createdAt      DateTime     @default(now())
+
+  @@index([teamId, createdAt])
+  @@index([userId])
+}
+
+// ─── OSS ISSUE CACHE ─────────────────────────────────────────────────────────
+// Ephemeral cache of resolved OSS issues fetched from GitHub / Stack Exchange.
+// TTL enforced via expiresAt + nightly BullMQ cleanup job.
+
+model OSSIssueCache {
+  id              String                        @id @default(cuid())
+  queryHash       String                        @unique
+  normalizedQuery String
+  queryEmbedding  Unsupported("vector(1536)")?
+  results         Json
+  hitCount        Int                           @default(1)
+  expiresAt       DateTime
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+
+  @@index([queryHash])
+  @@index([expiresAt])
+}
+
+model OSSQueryLog {
+  id          String   @id @default(cuid())
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  query       String
+  cacheHit    Boolean
+  resultCount Int
+  topRepoUrl  String?
+  latencyMs   Int
+  createdAt   DateTime @default(now())
+
+  @@index([teamId, createdAt])
+  @@index([cacheHit])
+}
+
+// ─── ENUMS ───────────────────────────────────────────────────────────────────
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum ConnectorType {
+  GITHUB
+  NOTION
+  SLACK
+  LINEAR
+  JIRA
+  CONFLUENCE
+  GITLAB
+}
+
+enum ConnectorStatus {
+  ACTIVE
+  PAUSED
+  ERROR
+  DISCONNECTED
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum QuerySurface {
+  PRIVATE
+  OSS
+  BOTH
+}
