@@ -4,6 +4,7 @@ import type { SyncCursor } from "./base.connector";
 import type { RawDocument, OAuthTokens } from "@devglean/shared";
 import { env } from "../env";
 import { logger } from "../lib/logger";
+import { prisma } from "../lib/prisma";
 
 export class NotionConnector extends BaseConnector {
   readonly type = "NOTION" as const;
@@ -51,6 +52,55 @@ export class NotionConnector extends BaseConnector {
       accessToken: data.access_token,
       workspaceId: data.workspace_id,
     };
+  }
+
+  /**
+   * Register a webhook subscription with Notion's official Webhooks API (ADR-025).
+   * Called at connector connect-time after OAuth completes.
+   * Stores the webhookId for later deregistration on disconnect.
+   */
+  async registerWebhook(connectorId: string, integrationToken: string): Promise<void> {
+    try {
+      const res = await fetch("https://api.notion.com/v1/webhooks", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${integrationToken}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: `${env.API_BASE_URL}/api/v1/webhooks/notion`,
+          event_types: ["page.created", "page.updated", "database.schema_updated"],
+        }),
+      });
+
+      if (!res.ok) {
+        const errorBody = await res.text();
+        logger.warn(
+          { status: res.status, body: errorBody },
+          "Notion webhook registration failed — falling back to polling"
+        );
+        return;
+      }
+
+      const data = (await res.json()) as { id: string };
+
+      await prisma.connector.update({
+        where: { id: connectorId },
+        data: { webhookId: data.id },
+      });
+
+      logger.info(
+        { connectorId, webhookId: data.id },
+        "Notion webhook registered successfully"
+      );
+    } catch (err) {
+      // Non-fatal — polling fallback remains active (belt-and-suspenders)
+      logger.warn(
+        { connectorId, err },
+        "Notion webhook registration failed — polling remains active as fallback"
+      );
+    }
   }
 
   async fetchDiff(

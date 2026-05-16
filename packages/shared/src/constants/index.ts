@@ -22,11 +22,11 @@ export const CHUNK_OVERLAP_CHARS = 256;
 /** Maximum chunks per embedding API call */
 export const EMBEDDING_BATCH_SIZE = 100;
 
-/** Embedding model */
-export const EMBEDDING_MODEL = "text-embedding-3-small";
+/** Embedding model — voyage-code-3 (code-optimised, ADR-022) */
+export const EMBEDDING_MODEL = "voyage-code-3";
 
-/** Embedding dimensions */
-export const EMBEDDING_DIMENSIONS = 1536;
+/** Embedding dimensions — voyage-code-3 outputs 1024-dim vectors */
+export const EMBEDDING_DIMENSIONS = 1024;
 
 /** LLM model for answer generation */
 export const GENERATION_MODEL = "claude-sonnet-4-20250514";
@@ -82,16 +82,18 @@ export const BCRYPT_ROUNDS = 12;
 /** Redis key prefixes */
 export const REDIS_KEYS = {
   oauthState: (state: string) => `oauth:state:${state}`,
-  embeddingCache: (hash: string) => `embed:v1:${hash}`,
+  embeddingCache: (hash: string) => `embed:v2:${hash}`,
   queryCount: (teamId: string, month: string) => `team:${teamId}:queries:${month}`,
   rateLimit: (key: string) => `rl:${key}`,
   session: (userId: string) => `session:${userId}`,
+  autocomplete: (teamId: string) => `autocomplete:team:${teamId}`,
 } as const;
 
 /** BullMQ queue names */
 export const QUEUE_NAMES = {
   connectorSync: "connector-sync",
   embedding: "embedding",
+  reindex: "reindex",
 } as const;
 
 /** Cookie names */
@@ -122,14 +124,15 @@ export const CLASSIFIER_MODEL = "claude-3-5-haiku-20241022";
 /** Maximum classifier output tokens */
 export const CLASSIFIER_MAX_TOKENS = 150;
 
-/** IssueRanker weights (sum = 1.0) */
+/** IssueRanker weights — Phase 9 updated (ADR-026, sum = 1.0) */
 export const ISSUE_RANKER_WEIGHTS = {
-  linkedPRMerged: 0.30,
+  linkedPRMerged: 0.25,
   reactionScore: 0.20,
   starsScore: 0.15,
-  hasCodeBlock: 0.15,
+  hasCodeBlock: 0.10,
   acceptedLabel: 0.10,
-  recency: 0.10,
+  recency: 0.05,
+  resolutionClarity: 0.15,
 } as const;
 
 /** Two years in milliseconds for recency scoring */

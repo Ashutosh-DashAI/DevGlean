@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion, Link } from "framer-motion"; // wait, Link is from @tanstack/react-router
 import {
   Search,
   Globe,
@@ -11,23 +11,22 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "../../store/auth.store";
 import { authApi } from "../../lib/api";
+import { Link as RouterLink, useLocation } from "@tanstack/react-router";
 
-interface SidebarProps {
-  currentPage: string;
-  onNavigate: (page: "search" | "ossExplorer" | "connectors" | "documents" | "analytics" | "settings") => void;
-}
+interface SidebarProps {}
 
 const navItems = [
-  { id: "search" as const, label: "Search", icon: Search },
-  { id: "ossExplorer" as const, label: "OSS Explorer", icon: Globe },
-  { id: "connectors" as const, label: "Connectors", icon: Cable },
-  { id: "documents" as const, label: "Documents", icon: FileText },
-  { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
-  { id: "settings" as const, label: "Settings", icon: Settings },
+  { id: "/search" as const, label: "Search", icon: Search },
+  { id: "/oss" as const, label: "OSS Explorer", icon: Globe },
+  { id: "/connectors" as const, label: "Connectors", icon: Cable },
+  { id: "/documents" as const, label: "Documents", icon: FileText },
+  { id: "/analytics" as const, label: "Analytics", icon: BarChart3 },
+  { id: "/settings" as const, label: "Settings", icon: Settings },
 ];
 
-export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
+export function Sidebar() {
   const { user, team, clearAuth } = useAuthStore();
+  const location = useLocation();
 
   const handleLogout = async () => {
     try {
@@ -92,15 +91,13 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       {/* Navigation */}
       <nav style={{ flex: 1 }}>
         {navItems.map((item) => {
-          const isActive = currentPage === item.id;
+          const isActive = location.pathname === item.id;
           const Icon = item.icon;
 
           return (
-            <motion.button
+            <RouterLink
               key={item.id}
-              onClick={() => onNavigate(item.id)}
-              whileHover={{ x: 2 }}
-              whileTap={{ scale: 0.98 }}
+              to={item.id}
               style={{
                 width: "100%",
                 display: "flex",
@@ -122,6 +119,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
                 marginBottom: 2,
                 fontFamily: "var(--font-sans)",
                 position: "relative",
+                textDecoration: "none",
               }}
             >
               {isActive && (
@@ -141,7 +139,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
               )}
               <Icon size={18} />
               {item.label}
-            </motion.button>
+            </RouterLink>
           );
         })}
       </nav>

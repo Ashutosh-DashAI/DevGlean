@@ -22,6 +22,9 @@ import type {
   FusedResult,
 } from "@devglean/shared";
 
+/** Autocomplete TTL: 30 days */
+const AUTOCOMPLETE_TTL_SECONDS = 60 * 60 * 24 * 30;
+
 /**
  * Checks if the team has exceeded their monthly query limit.
  */
@@ -180,6 +183,15 @@ export async function* searchStream(
 
   await incrementQueryCount(user.teamId);
 
+  // G3: Fire-and-forget autocomplete write (ADR-023)
+  const autocompleteKey = REDIS_KEYS.autocomplete(user.teamId);
+  redis
+    .multi()
+    .zincrby(autocompleteKey, 1, input.query.toLowerCase().trim())
+    .expire(autocompleteKey, AUTOCOMPLETE_TTL_SECONDS)
+    .exec()
+    .catch((err) => logger.warn({ err }, "Autocomplete write failed (non-fatal)"));
+
   // 7. Send sources with surface labels
   yield `data: ${JSON.stringify({
     event: "sources",
@@ -282,6 +294,15 @@ export async function search(
   });
 
   await incrementQueryCount(user.teamId);
+
+  // G3: Fire-and-forget autocomplete write (ADR-023)
+  const autocompleteKey = REDIS_KEYS.autocomplete(user.teamId);
+  redis
+    .multi()
+    .zincrby(autocompleteKey, 1, input.query.toLowerCase().trim())
+    .expire(autocompleteKey, AUTOCOMPLETE_TTL_SECONDS)
+    .exec()
+    .catch((err) => logger.warn({ err }, "Autocomplete write failed (non-fatal)"));
 
   return { answer, sources, latencyMs, queryId: queryLog.id, tokensUsed };
 }

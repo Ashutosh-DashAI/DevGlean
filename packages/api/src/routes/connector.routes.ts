@@ -22,6 +22,8 @@ import { notionConnector } from "../connectors/notion.connector";
 import { slackConnector } from "../connectors/slack.connector";
 import { linearConnector } from "../connectors/linear.connector";
 import { jiraConnector } from "../connectors/jira.connector";
+import { gitlabConnector } from "../connectors/gitlab.connector";
+import { confluenceConnector } from "../connectors/confluence.connector";
 import { env } from "../env";
 import { logger } from "../lib/logger";
 import { createHmac } from "crypto";
@@ -37,6 +39,8 @@ const connectorMap: Record<string, BaseConnector> = {
   slack: slackConnector,
   linear: linearConnector,
   jira: jiraConnector,
+  gitlab: gitlabConnector,
+  confluence: confluenceConnector,
 };
 
 // GET /api/v1/connectors
@@ -204,7 +208,7 @@ connectorRoutes.post("/:type/oauth/callback", async (c) => {
   const connector = await prisma.connector.create({
     data: {
       teamId,
-      type: parsedType.toUpperCase() as "GITHUB" | "NOTION" | "SLACK" | "LINEAR" | "JIRA",
+      type: parsedType.toUpperCase() as "GITHUB" | "NOTION" | "SLACK" | "LINEAR" | "JIRA" | "GITLAB" | "CONFLUENCE",
       displayName: `${parsedType.charAt(0).toUpperCase() + parsedType.slice(1)} Connector`,
       oauthToken: encryptedAccessToken,
       refreshToken: encryptedRefreshToken,

@@ -5,7 +5,7 @@ import type { SearchResult } from "@devglean/shared";
 import { SEARCH_WEIGHTS, MAX_CONTEXT_CHUNKS } from "@devglean/shared";
 
 interface RetrievalParams {
-  queryVector: number[];
+  queryVector: number[] | null;
   query: string;
   teamId: string;
   aclGroups: string[];
@@ -33,10 +33,64 @@ interface RawSearchRow {
 }
 
 /**
+ * BM25-only retrieval fallback for when the embedding circuit breaker
+ * is open (ADR-028). Uses PostgreSQL full-text search with pg_trgm
+ * trigram similarity as a secondary signal.
+ */
+export async function bm25Retrieve(
+  query: string,
+  teamId: string,
+  aclGroups: string[],
+  limit: number = MAX_CONTEXT_CHUNKS
+): Promise<SearchResult[]> {
+  const sql = `
+    SELECT 
+      id,
+      title,
+      content,
+      "sourceUrl" AS source_url,
+      "sourceType"::text AS source_type,
+      metadata,
+      "chunkIndex" AS chunk_index,
+      "chunkTotal" AS chunk_total,
+      COALESCE(ts_rank(to_tsvector('english', content), plainto_tsquery('english', $1)), 0) AS score
+    FROM "Document"
+    WHERE "teamId" = $2
+      AND "aclGroups" && $3::text[]
+    ORDER BY score DESC
+    LIMIT $4
+  `;
+
+  const startTime = performance.now();
+  const rows = await prisma.$queryRawUnsafe<RawSearchRow[]>(sql, query, teamId, aclGroups, limit);
+  const elapsedMs = Math.round(performance.now() - startTime);
+
+  logger.info(
+    { resultCount: rows.length, elapsedMs, teamId, mode: "bm25-only" },
+    "BM25-only retrieval complete (degraded mode)"
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    content: row.content,
+    sourceUrl: row.source_url,
+    sourceType: row.source_type,
+    score: Number(row.score),
+    metadata: row.metadata as Record<string, unknown>,
+    chunkIndex: row.chunk_index,
+    chunkTotal: row.chunk_total,
+  }));
+}
+
+/**
  * Hybrid search combining pgvector cosine similarity (70%) and
  * PostgreSQL full-text search BM25-approximation (30%).
  * 
  * ACL filtering is applied via PostgreSQL array overlap (&&).
+ * 
+ * When queryVector is null (circuit breaker open), falls back
+ * to BM25-only retrieval automatically (ADR-028).
  */
 export async function retrieve(params: RetrievalParams): Promise<SearchResult[]> {
   const {
@@ -47,6 +101,11 @@ export async function retrieve(params: RetrievalParams): Promise<SearchResult[]>
     filters,
     limit = MAX_CONTEXT_CHUNKS,
   } = params;
+
+  // Degraded mode: BM25-only when embedding is unavailable (ADR-028)
+  if (queryVector === null) {
+    return bm25Retrieve(query, teamId, aclGroups, limit);
+  }
 
   const vectorStr = `[${queryVector.join(",")}]`;
 

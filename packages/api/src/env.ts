@@ -18,6 +18,12 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required"),
   ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required"),
 
+  // Voyage AI embeddings (Phase 9 — G2, replaces OpenAI for embeddings)
+  VOYAGE_API_KEY: z.string().default(""),
+
+  // Notion webhook secret (Phase 9 — G5)
+  NOTION_WEBHOOK_SECRET: z.string().default(""),
+
   GITHUB_CLIENT_ID: z.string().default(""),
   GITHUB_CLIENT_SECRET: z.string().default(""),
   GITHUB_WEBHOOK_SECRET: z.string().default(""),
@@ -35,6 +41,11 @@ const envSchema = z.object({
 
   JIRA_CLIENT_ID: z.string().default(""),
   JIRA_CLIENT_SECRET: z.string().default(""),
+
+  // GitLab OAuth App (Phase 9 — G4)
+  GITLAB_CLIENT_ID: z.string().default(""),
+  GITLAB_CLIENT_SECRET: z.string().default(""),
+  GITLAB_WEBHOOK_SECRET: z.string().default(""),
 
   // GitHub App (OSS Intelligence — per-installation rate limits)
   GITHUB_APP_ID: z.string().default(""),

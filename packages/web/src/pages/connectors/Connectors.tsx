@@ -10,6 +10,8 @@ const CONNECTOR_TYPES = [
   { type: "slack", label: "Slack", icon: MessageSquare, color: "#4A154B", description: "Channels, threads, messages" },
   { type: "linear", label: "Linear", icon: Ticket, color: "#5E6AD2", description: "Issues, comments, projects" },
   { type: "jira", label: "Jira", icon: Ticket, color: "#0052CC", description: "Issues, comments, boards" },
+  { type: "gitlab", label: "GitLab", icon: Github, color: "#FC6D26", description: "Projects, issues, MRs, commits" },
+  { type: "confluence", label: "Confluence", icon: FileText, color: "#0052CC", description: "Pages, blog posts, spaces" },
 ];
 
 interface ConnectorData {

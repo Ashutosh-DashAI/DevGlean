@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search as SearchIcon, Sparkles, ExternalLink, ThumbsUp, ThumbsDown, Clock, Command } from "lucide-react";
+import { Sparkles, ExternalLink, ThumbsUp, ThumbsDown, Clock, Command } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { createSearchStream, searchApi } from "../../lib/api";
+import { useNavigate } from "@tanstack/react-router";
+import { SearchInput } from "../../components/SearchInput";
 
 const EXAMPLE_QUERIES = [
   "Why did we migrate from REST to GraphQL?",
@@ -20,8 +22,16 @@ interface Source {
   score: string;
 }
 
-export function Search() {
-  const [query, setQuery] = useState("");
+export function Search({
+  initialQuery = "",
+  initialSurface = "both",
+  initialIssue = null
+}: {
+  initialQuery?: string;
+  initialSurface?: string;
+  initialIssue?: string | null;
+}) {
+  const [query, setQuery] = useState(initialQuery);
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -32,6 +42,15 @@ export function Search() {
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const answerEndRef = useRef<HTMLDivElement>(null);
+
+  // Sync initial query to search on mount
+  useEffect(() => {
+    if (initialQuery) {
+      setQuery(initialQuery);
+      performSearch(initialQuery);
+    }
+  }, [initialQuery, performSearch]);
+
 
   // Cycle placeholder text
   useEffect(() => {
@@ -60,12 +79,10 @@ export function Search() {
     }
   }, [answer, isStreaming]);
 
-  const handleSearch = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!query.trim() || isStreaming) return;
+  const performSearch = useCallback(
+    (searchQuery: string) => {
+      if (!searchQuery.trim()) return;
 
-      // Reset state
       setAnswer("");
       setSources([]);
       setError("");
@@ -73,11 +90,10 @@ export function Search() {
       setLatencyMs(null);
       setIsStreaming(true);
 
-      // Abort previous search
       abortRef.current?.abort();
 
       const controller = createSearchStream(
-        query,
+        searchQuery,
         (token) => setAnswer((prev) => prev + token),
         (newSources) => setSources(newSources as Source[]),
         (data) => {
@@ -93,7 +109,24 @@ export function Search() {
 
       abortRef.current = controller;
     },
-    [query, isStreaming]
+    []
+  );
+
+  const navigate = useNavigate();
+
+  const handleSearch = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!query.trim() || isStreaming) return;
+
+      navigate({
+        to: '/search',
+        search: { q: query, surface: initialSurface },
+      });
+
+      performSearch(query);
+    },
+    [query, isStreaming, performSearch, navigate, initialSurface]
   );
 
   const handleFeedback = async (helpful: boolean) => {
@@ -291,6 +324,27 @@ export function Search() {
                 <div style={{ flex: 1 }} />
                 <div style={{ display: "flex", gap: 4 }}>
                   <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.href);
+                      alert("Link copied to clipboard!");
+                    }}
+                    style={{
+                      background: "var(--color-surface)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "var(--radius-sm)",
+                      padding: "6px 10px",
+                      cursor: "pointer",
+                      color: "var(--color-text-muted)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      fontSize: 12,
+                      fontFamily: "var(--font-sans)",
+                    }}
+                  >
+                    <ExternalLink size={12} /> Copy Link
+                  </button>
+                  <button
                     onClick={() => handleFeedback(true)}
                     style={{
                       background: "var(--color-surface)",
@@ -313,7 +367,7 @@ export function Search() {
                     style={{
                       background: "var(--color-surface)",
                       border: "1px solid var(--color-border)",
-                      borderRadius: "var(--radius-sm)",
+                      borderRadius: "var(--radius-sm",
                       padding: "6px 10px",
                       cursor: "pointer",
                       color: "var(--color-text-muted)",
@@ -434,96 +488,57 @@ export function Search() {
         }}
       >
         <form onSubmit={handleSearch}>
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            onSearch={handleSearch}
+            placeholder={EXAMPLE_QUERIES[placeholderIndex]}
+            disabled={isStreaming}
+          />
           <div
             style={{
-              position: "relative",
+              position: "absolute",
+              right: 14,
               display: "flex",
               alignItems: "center",
+              gap: 8,
             }}
           >
-            <SearchIcon
-              size={18}
+            <kbd
               style={{
-                position: "absolute",
-                left: 16,
-                color: "var(--color-text-muted)",
-                pointerEvents: "none",
-              }}
-            />
-            <input
-              ref={inputRef}
-              id="search-input"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={EXAMPLE_QUERIES[placeholderIndex]}
-              disabled={isStreaming}
-              style={{
-                width: "100%",
-                padding: "16px 120px 16px 46px",
-                borderRadius: "var(--radius-xl)",
+                fontSize: 11,
+                padding: "3px 6px",
+                borderRadius: 4,
+                background: "var(--color-base)",
                 border: "1px solid var(--color-border)",
-                background: "var(--color-surface)",
-                color: "var(--color-text)",
-                fontSize: 15,
-                fontFamily: "var(--font-sans)",
-                outline: "none",
-                transition: "border-color 0.2s, box-shadow 0.2s",
-                boxShadow: "var(--shadow-lg)",
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = "var(--color-primary)";
-                e.target.style.boxShadow = "var(--shadow-glow)";
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = "var(--color-border)";
-                e.target.style.boxShadow = "var(--shadow-lg)";
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                right: 14,
+                color: "var(--color-text-muted)",
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
+                gap: 2,
               }}
             >
-              <kbd
-                style={{
-                  fontSize: 11,
-                  padding: "3px 6px",
-                  borderRadius: 4,
-                  background: "var(--color-base)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text-muted)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 2,
-                }}
-              >
-                <Command size={10} />K
-              </kbd>
-              <motion.button
-                type="submit"
-                disabled={isStreaming || !query.trim()}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                style={{
-                  padding: "8px 16px",
-                  borderRadius: "var(--radius-md)",
-                  border: "none",
-                  cursor: isStreaming || !query.trim() ? "not-allowed" : "pointer",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  fontFamily: "var(--font-sans)",
-                  background: "var(--color-primary)",
-                  color: "#fff",
-                  opacity: isStreaming || !query.trim() ? 0.5 : 1,
-                }}
-              >
-                {isStreaming ? "Thinking…" : "Ask"}
-              </motion.button>
-            </div>
+              <Command size={10} />K
+            </kbd>
+            <motion.button
+              type="submit"
+              disabled={isStreaming || !query.trim()}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              style={{
+                padding: "8px 16px",
+                borderRadius: "var(--radius-md)",
+                border: "none",
+                cursor: isStreaming || !query.trim() ? "not-allowed" : "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+                fontFamily: "var(--font-sans)",
+                background: "var(--color-primary)",
+                color: "#fff",
+                opacity: isStreaming || !query.trim() ? 0.5 : 1,
+              }}
+            >
+              {isStreaming ? "Thinking…" : "Ask"}
+            </motion.button>
           </div>
         </form>
       </div>

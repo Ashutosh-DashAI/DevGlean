@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { prisma } from "../lib/prisma";
 import { redis } from "../lib/redis";
+import { EmbeddingCircuitBreaker } from "../services/embedding.service";
 
 const healthRoutes = new Hono();
 
@@ -34,7 +35,7 @@ healthRoutes.get("/", async (c) => {
 
 // GET /health/deep
 healthRoutes.get("/deep", async (c) => {
-  const checks: Record<string, { status: string; latencyMs: number; error?: string }> = {};
+  const checks: Record<string, { status: string; latencyMs: number; error?: string; mode?: string }> = {};
 
   // Database check
   const dbStart = performance.now();
@@ -71,6 +72,23 @@ healthRoutes.get("/deep", async (c) => {
     checks["pgvector"] = {
       status: "error",
       latencyMs: Math.round(performance.now() - pgvStart),
+      error: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+
+  // Embedding circuit breaker check (ADR-028)
+  const embeddingStart = performance.now();
+  try {
+    const embeddingOpen = await EmbeddingCircuitBreaker.isOpen();
+    checks["embedding"] = {
+      status: embeddingOpen ? "degraded" : "ok",
+      latencyMs: Math.round(performance.now() - embeddingStart),
+      mode: embeddingOpen ? "bm25-only" : "hybrid",
+    };
+  } catch (err) {
+    checks["embedding"] = {
+      status: "error",
+      latencyMs: Math.round(performance.now() - embeddingStart),
       error: err instanceof Error ? err.message : "Unknown error",
     };
   }

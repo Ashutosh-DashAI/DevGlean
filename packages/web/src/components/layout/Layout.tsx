@@ -1,16 +1,40 @@
+import React, { useState, useEffect } from "react";
 import { type ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
+import { DegradedBanner } from "../DegradedBanner";
+import { apiClient } from "../lib/api";
 
 interface LayoutProps {
   children: ReactNode;
-  currentPage: string;
-  onNavigate: (page: "search" | "ossExplorer" | "connectors" | "documents" | "analytics" | "settings") => void;
 }
 
-export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
+export function Layout({ children }: LayoutProps) {
+  const [isDegraded, setIsDegraded] = useState(false);
+
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await apiClient.get("/health/deep");
+        if (res.data.checks?.embedding?.status === "degraded") {
+          setIsDegraded(true);
+        } else {
+          setIsDegraded(false);
+        }
+      } catch (err) {
+        // Keep current state on failure
+      }
+    };
+
+    // Poll every 30s
+    const interval = setInterval(checkHealth, 30000);
+    checkHealth();
+
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-      <Sidebar currentPage={currentPage} onNavigate={onNavigate} />
+      <Sidebar />
       <main
         style={{
           flex: 1,
@@ -18,6 +42,11 @@ export function Layout({ children, currentPage, onNavigate }: LayoutProps) {
           background: "var(--color-base)",
         }}
       >
+        {isDegraded && (
+          <DegradedBanner
+            message="Search is running in reduced-accuracy mode. Results use keyword matching only. Vector search will restore automatically."
+          />
+        )}
         {children}
       </main>
     </div>

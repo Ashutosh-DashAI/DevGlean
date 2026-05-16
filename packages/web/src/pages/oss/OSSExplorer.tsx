@@ -39,8 +39,14 @@ interface CacheStatus {
   rateLimitRemaining: number;
 }
 
-export function OSSExplorer() {
-  const [query, setQuery] = useState("");
+export function OSSExplorer({
+  initialQuery = "",
+  initialSite = undefined
+}: {
+  initialQuery?: string;
+  initialSite?: string;
+}) {
+  const [query, setQuery] = useState(initialQuery);
   const [issues, setIssues] = useState<OSSIssue[]>([]);
   const [loading, setLoading] = useState(false);
   const [cacheHit, setCacheHit] = useState(false);

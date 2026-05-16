@@ -1,13 +1,16 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import { z } from "zod";
 import {
   searchQuerySchema,
   searchFeedbackSchema,
   searchHistoryQuerySchema,
   RATE_LIMITS,
+  REDIS_KEYS,
 } from "@devglean/shared";
 import * as searchService from "../services/search.service";
 import { prisma } from "../lib/prisma";
+import { redis } from "../lib/redis";
 import { authMiddleware } from "../middleware/auth";
 import { teamScopeMiddleware } from "../middleware/teamScope";
 import { rateLimit } from "../middleware/rateLimit";
@@ -18,6 +21,10 @@ const searchRoutes = new Hono();
 searchRoutes.use("*", authMiddleware, teamScopeMiddleware);
 
 const searchRateLimit = rateLimit(RATE_LIMITS.search);
+
+const suggestionsQuerySchema = z.object({
+  q: z.string().min(1).max(100).trim(),
+});
 
 // POST /api/v1/search
 searchRoutes.post("/", searchRateLimit, async (c) => {
@@ -110,25 +117,57 @@ searchRoutes.post("/:queryId/feedback", async (c) => {
   return c.json({ success: true });
 });
 
-// GET /api/v1/search/suggestions
+/**
+ * GET /api/v1/search/suggestions — Redis ZSET prefix autocomplete (ADR-023).
+ *
+ * Uses ZRANGEBYLEX for O(log N + M) prefix matching, then re-ranks by
+ * frequency score (ZSCORE pipeline). Returns top 5 per-team, per-prefix.
+ * Team isolation is enforced via per-team Redis keys.
+ */
 searchRoutes.get("/suggestions", async (c) => {
   const teamId = c.get("teamId") as string;
-  const q = c.req.query("q") ?? "";
+  const rawQ = c.req.query("q");
 
-  const recentQueries = await prisma.queryLog.findMany({
-    where: {
-      teamId,
-      ...(q ? { query: { contains: q, mode: "insensitive" } } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    take: 10,
-    select: { query: true },
-    distinct: ["query"],
-  });
+  // Validate or return empty
+  const parseResult = suggestionsQuerySchema.safeParse({ q: rawQ });
+  if (!parseResult.success) {
+    return c.json({ suggestions: [] });
+  }
 
-  return c.json({
-    suggestions: recentQueries.map((q) => q.query),
-  });
+  const prefix = parseResult.data.q.toLowerCase().trim();
+  const key = REDIS_KEYS.autocomplete(teamId);
+
+  // ZRANGEBYLEX returns members lexicographically between [prefix and [prefix\xff
+  const allMatches = await redis.zrangebylex(
+    key,
+    `[${prefix}`,
+    `[${prefix}\xff`,
+    "LIMIT",
+    0,
+    20
+  );
+
+  if (allMatches.length === 0) {
+    return c.json({ suggestions: [] });
+  }
+
+  // Get scores for matched members to re-rank by frequency
+  const scorePipeline = redis.pipeline();
+  for (const member of allMatches) {
+    scorePipeline.zscore(key, member);
+  }
+  const scores = await scorePipeline.exec();
+
+  const ranked = allMatches
+    .map((query, i) => ({
+      query,
+      score: Number(scores?.[i]?.[1] ?? 0),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map((r) => r.query);
+
+  return c.json({ suggestions: ranked });
 });
 
 export { searchRoutes };
